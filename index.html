@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS Agent Performance Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; display: flex; height: 100vh; overflow: hidden; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width: 260px; min-width: 260px; background: #1a2744; color: #fff;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#sidebar-header { padding: 18px 16px 12px; border-bottom: 1px solid #2d3f6b; }
+#sidebar-header h2 { font-size: 15px; font-weight: 700; color: #fff; }
+#sidebar-header p  { font-size: 11px; color: #8898bb; margin-top: 2px; }
+
+/* Upload */
+.upload-section { padding: 14px 16px; border-bottom: 1px solid #2d3f6b; }
+.upload-section label { font-size: 11px; font-weight: 600; color: #8898bb; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px; }
+.upload-btn {
+  width: 100%; padding: 9px; background: #2d4a8a; color: #fff;
+  border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: .15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.upload-btn:hover { background: #3a5aa8; }
+#csvInput { display: none; }
+#uploadStatus { font-size: 11px; margin-top: 6px; min-height: 16px; color: #6ee7b7; }
+
+/* Agents */
+.agents-section { padding: 14px 16px 8px; flex: 1; overflow-y: auto; }
+.agents-section > label { font-size: 11px; font-weight: 600; color: #8898bb; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px; }
+#agentSearch {
+  width: 100%; padding: 7px 10px; background: #243257; border: 1px solid #3a4f7a;
+  border-radius: 6px; color: #fff; font-size: 13px; margin-bottom: 10px;
+}
+#agentSearch::placeholder { color: #5d718f; }
+#agentSearch:focus { outline: none; border-color: #4a7adb; }
+.agent-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer; margin-bottom: 4px; transition: .12s;
+}
+.agent-item:hover { background: #243257; }
+.agent-item.active { background: #2d6be4; }
+.agent-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: #3a5aa8;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.agent-item.active .agent-avatar { background: rgba(255,255,255,.25); }
+.agent-name { font-size: 13px; font-weight: 500; }
+
+/* Months */
+.months-section { padding: 12px 16px 16px; border-top: 1px solid #2d3f6b; }
+.months-section > label { font-size: 11px; font-weight: 600; color: #8898bb; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 4px; }
+.months-hint { font-size: 10px; color: #5d718f; margin-bottom: 10px; }
+#monthsList { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+.month-chip {
+  padding: 7px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 2px solid transparent; background: #243257; color: #8898bb;
+  transition: .15s; text-align: center;
+}
+.month-chip:hover { background: #2d3f6b; color: #fff; }
+.month-chip.sel-0 { background: #2d6be4; color: #fff; border-color: #2d6be4; }
+.month-chip.sel-1 { background: #059669; color: #fff; border-color: #059669; }
+.month-chip.sel-2 { background: #d97706; color: #fff; border-color: #d97706; }
+
+/* ── MAIN ── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#topbar {
+  background: #fff; border-bottom: 1px solid #e2e8f0;
+  padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;
+}
+#topbar h1 { font-size: 18px; font-weight: 700; color: #1a2744; }
+#topbarMeta { display: flex; align-items: center; gap: 10px; }
+#topbarLabel { background: #f0f4f8; border-radius: 20px; padding: 5px 14px; font-size: 12px; color: #4a5568; font-weight: 500; }
+#refreshBtn {
+  background: #2d6be4; color: #fff; border: none; border-radius: 8px;
+  padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+#refreshBtn:hover { background: #1d5bd4; }
+
+#content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+/* Empty state */
+#emptyState { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #a0aec0; }
+#emptyState .icon { font-size: 48px; margin-bottom: 16px; }
+#emptyState h3 { font-size: 18px; color: #4a5568; margin-bottom: 8px; }
+#emptyState p { font-size: 14px; }
+
+/* KPI grid */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.kpi-card {
+  background: #fff; border-radius: 10px; padding: 14px 16px;
+  border-left: 4px solid #2d6be4; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.kpi-label { font-size: 11px; color: #718096; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+.kpi-value { font-size: 24px; font-weight: 700; color: #1a2744; line-height: 1; }
+.kpi-unit  { font-size: 12px; color: #718096; margin-top: 2px; }
+.kpi-card.blue   { border-left-color: #2d6be4; } .kpi-card.blue .kpi-value { color: #2d6be4; }
+.kpi-card.green  { border-left-color: #059669; } .kpi-card.green .kpi-value { color: #059669; }
+.kpi-card.amber  { border-left-color: #d97706; } .kpi-card.amber .kpi-value { color: #d97706; }
+.kpi-card.red    { border-left-color: #dc2626; } .kpi-card.red .kpi-value { color: #dc2626; }
+.kpi-card.purple { border-left-color: #7c3aed; } .kpi-card.purple .kpi-value { color: #7c3aed; }
+.kpi-card.teal   { border-left-color: #0f766e; } .kpi-card.teal .kpi-value { color: #0f766e; }
+
+/* Section */
+.section-title { font-size: 14px; font-weight: 700; color: #1a2744; margin-bottom: 12px; padding-left: 8px; border-left: 3px solid #2d6be4; }
+
+/* Charts grid */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.charts-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+@media(max-width:900px){ .charts-grid { grid-template-columns: 1fr; } }
+.chart-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.chart-card h4 { font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 12px; }
+.chart-card canvas { max-height: 220px; }
+
+/* Tables */
+.table-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.table-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow: hidden; }
+.table-card h4 { font-size: 13px; font-weight: 600; color: #4a5568; margin-bottom: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #f7f9fc; padding: 7px 10px; text-align: left; font-weight: 600; color: #718096; font-size: 11px; text-transform: uppercase; }
+td { padding: 8px 10px; border-bottom: 1px solid #f0f4f8; color: #2d3748; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f7f9fc; }
+.rank-num { font-weight: 700; color: #2d6be4; }
+
+/* Yearly summary */
+.yearly-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.yearly-table th { background: #1a2744; color: #fff; padding: 8px 10px; text-align: center; font-size: 11px; }
+.yearly-table th:first-child { text-align: left; }
+.yearly-table td { padding: 8px 10px; border-bottom: 1px solid #f0f4f8; text-align: center; }
+.yearly-table td:first-child { text-align: left; font-weight: 600; }
+.yearly-table tr:nth-child(even) td { background: #f7f9fc; }
+.yearly-table .avg-row td { background: #1a2744; color: #fff; font-weight: 700; }
+.good { color: #059669; font-weight: 700; }
+.warn { color: #dc2626; font-weight: 700; }
+
+/* Comparison table */
+.comp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.comp-table th { background: #1a2744; color: #fff; padding: 8px 10px; font-size: 11px; text-align: center; }
+.comp-table th:first-child { text-align: left; }
+.comp-table td { padding: 8px 10px; border-bottom: 1px solid #f0f4f8; }
+.comp-table td:first-child { font-weight: 600; color: #2d3748; }
+.comp-table tr:nth-child(even) td { background: #f7f9fc; }
+.delta-up   { color: #059669; font-weight: 700; }
+.delta-down { color: #dc2626; font-weight: 700; }
+.delta-same { color: #718096; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c4cfe0; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h2>📊 CS Performance</h2>
+    <p>Agent Dashboard</p>
+  </div>
+
+  <div class="upload-section">
+    <label>CSV Upload</label>
+    <button class="upload-btn" onclick="document.getElementById('csvInput').click()">
+      📂 Upload CSV File(s)
+    </button>
+    <input type="file" id="csvInput" accept=".csv" multiple />
+    <div id="uploadStatus">Select agent name after upload</div>
+  </div>
+
+  <!-- Upload modal -->
+  <div id="uploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:none;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <h3 style="margin-bottom:16px;color:#1a2744">Name this upload</h3>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:5px">Agent Name</label>
+        <input id="modalAgent" type="text" placeholder="e.g. Donna Rafil" style="width:100%;padding:8px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:14px" />
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:5px">Month Label</label>
+        <input id="modalMonth" type="text" placeholder="e.g. MAR 2026" style="width:100%;padding:8px 12px;border:2px solid #e2e8f0;border-radius:6px;font-size:14px" />
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="cancelUpload()" style="flex:1;padding:9px;border:none;border-radius:7px;background:#e2e8f0;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+        <button onclick="confirmUpload()" style="flex:1;padding:9px;border:none;border-radius:7px;background:#2d6be4;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Save & Process</button>
+      </div>
+      <div id="modalStatus" style="margin-top:10px;font-size:12px;display:none"></div>
+    </div>
+  </div>
+
+  <div class="agents-section">
+    <label>Agents</label>
+    <input id="agentSearch" type="text" placeholder="🔍 Search agent..." oninput="renderAgentList()" />
+    <div id="agentList"></div>
+  </div>
+
+  <div class="months-section">
+    <label>Month (max 3)</label>
+    <div class="months-hint">Color-coded by selection order</div>
+    <div id="monthsList"></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <h1>CS Agent Performance Dashboard</h1>
+    <div id="topbarMeta">
+      <span id="topbarLabel">No agent selected</span>
+      <button id="refreshBtn" onclick="renderDashboard()">🔄 Refresh</button>
+    </div>
+  </div>
+  <div id="content">
+    <div id="emptyState">
+      <div class="icon">📊</div>
+      <h3>Upload a CSV to get started</h3>
+      <p>Click "Upload CSV File(s)" in the sidebar → select agent & month → view dashboard</p>
+    </div>
+    <div id="dashboard" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+// ─── STORAGE ─────────────────────────────────────────────────
+var DB_KEY = 'cs_perf_db';
+var db = { agents: {} };
+var selectedAgent = null;
+var selectedMonths = [];
+var pendingFiles = null;
+
+function loadDB() {
+  try { var s = localStorage.getItem(DB_KEY); if (s) db = JSON.parse(s); } catch(e) {}
+}
+function saveDB() { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function listAgents() { return Object.keys(db.agents).sort(); }
+function listMonths(agent) { return agent && db.agents[agent] ? Object.keys(db.agents[agent]) : []; }
+function getMetrics(agent, month) { return (db.agents[agent] && db.agents[agent][month]) || null; }
+function setMetrics(agent, month, metrics) {
+  if (!db.agents[agent]) db.agents[agent] = {};
+  db.agents[agent][month] = metrics;
+  saveDB();
+}
+
+// ─── CSV UPLOAD ───────────────────────────────────────────────
+document.getElementById('csvInput').addEventListener('change', function(e) {
+  var files = Array.from(e.target.files);
+  if (!files.length) return;
+  pendingFiles = files;
+  var modal = document.getElementById('uploadModal');
+  modal.style.display = 'flex';
+  document.getElementById('modalStatus').style.display = 'none';
+  document.getElementById('modalAgent').focus();
+  e.target.value = '';
+});
+
+function cancelUpload() {
+  document.getElementById('uploadModal').style.display = 'none';
+  pendingFiles = null;
+}
+
+function confirmUpload() {
+  var agent = document.getElementById('modalAgent').value.trim();
+  var month = document.getElementById('modalMonth').value.trim();
+  if (!agent || !month) {
+    showModalStatus('Please fill in both fields.', 'red'); return;
+  }
+  showModalStatus('⏳ Processing...', '#2d6be4');
+
+  setTimeout(function() {
+    try {
+      var reads = pendingFiles.map(function(f) {
+        return new Promise(function(resolve) {
+          var r = new FileReader();
+          r.onload = function(e) { resolve(e.target.result); };
+          r.readAsText(f, 'UTF-8');
+        });
+      });
+      Promise.all(reads).then(function(contents) {
+        // Merge: first file full, rest skip header
+        var merged = contents[0];
+        for (var i = 1; i < contents.length; i++) {
+          var lines = contents[i].split('\n');
+          lines.shift();
+          merged += '\n' + lines.join('\n');
+        }
+        var rows = parseCSV(merged);
+        if (rows.length < 2) { showModalStatus('CSV is empty.', 'red'); return; }
+        var headers = rows[0].map(function(h) { return h.replace('Support Ticket Agent Interactions ','').trim(); });
+        var metrics = calcMetrics(rows.slice(1), headers, agent, month);
+        setMetrics(agent, month, metrics);
+        document.getElementById('uploadModal').style.display = 'none';
+        pendingFiles = null;
+        setStatus('✅ ' + agent + ' · ' + month + ' (' + metrics.tickets + ' tickets)');
+        renderAgentList();
+        if (selectedAgent === agent) renderMonthList();
+        else { selectedAgent = agent; selectedMonths = [month]; renderAgentList(); renderMonthList(); renderDashboard(); }
+      });
+    } catch(err) { showModalStatus('Error: ' + err.message, 'red'); }
+  }, 50);
+}
+
+function showModalStatus(msg, color) {
+  var el = document.getElementById('modalStatus');
+  el.textContent = msg; el.style.color = color; el.style.display = 'block';
+}
+function setStatus(msg) { document.getElementById('uploadStatus').textContent = msg; }
+
+// ─── PARSE CSV ───────────────────────────────────────────────
+function parseCSV(text) {
+  var rows = []; var row = []; var cell = ''; var inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
+    if (c === '"') { if (inQ && text[i+1] === '"') { cell += '"'; i++; } else { inQ = !inQ; } }
+    else if (c === ',' && !inQ) { row.push(cell); cell = ''; }
+    else if ((c === '\n' || c === '\r') && !inQ) {
+      if (c === '\r' && text[i+1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(function(v){ return v.trim(); })) rows.push(row);
+      row = [];
+    } else { cell += c; }
+  }
+  if (cell || row.length) { row.push(cell); if (row.some(function(v){ return v.trim(); })) rows.push(row); }
+  return rows;
+}
+
+// ─── CALC METRICS ────────────────────────────────────────────
+function calcMetrics(rows, headers, agentName, label) {
+  function ci(n) { return headers.indexOf(n); }
+  var C = {
+    tid:ci('Ticket ID'), status:ci('Status'), ts:ci('Comment Timestamp'),
+    solvedAt:ci('First Solved At'), ht:ci('Handle Time (minutes)'),
+    frt:ci('First Reply Time (Minutes)'), fcr:ci('First Contact Resolution (FCR)'),
+    csatP:ci('Positive CSAT Ticket Volume'), csatN:ci('Negative CSAT Ticket Volume'),
+    reassign:ci('Is Reassignment'), tags:ci('Tags'), reopens:ci('Count Reopens'),
+    seg1:ci('Segment 1'), seg2:ci('Segment 2'), seg3:ci('Segment 3'),
+    channel:ci('Channel'), lang:ci('Language')
+  };
+
+  var seen={}, frtArr=[], htArr=[], resArr=[], dates={};
+  var tkStatus={}, tkHT={}, tkFirst={}, tkSolved={};
+  var frtByHr={}, frtByDow={}, segCount={}, segHT={}, chanMap={}, langMap={}, weekly={};
+  var fcrPos=0, fcrTot=0, csatP=0, csatN=0;
+  var escalCnt=0, raCnt=0, roCnt=0;
+
+  rows.forEach(function(row) {
+    var tid = C.tid>=0 ? (row[C.tid]||'').trim() : ''; if (!tid) return;
+    var tsStr = C.ts>=0 ? row[C.ts]||'' : '';
+    var ts = tsStr ? new Date(tsStr) : null;
+    var ok = ts && !isNaN(ts.getTime());
+
+    if (ok) {
+      dates[ts.toDateString()] = true;
+      var wk = isoWeek(ts);
+      if (!weekly[wk]) weekly[wk] = { tids:{}, frs:[], hts:[] };
+      weekly[wk].tids[tid] = true;
+      var fv = parseFloat(C.frt>=0 ? row[C.frt] : NaN);
+      if (!isNaN(fv) && fv>=0) {
+        frtArr.push(fv); weekly[wk].frs.push(fv);
+        if (fv > 15) { var hr=ts.getHours(); frtByHr[hr]=(frtByHr[hr]||0)+1; frtByDow[ts.getDay()]=(frtByDow[ts.getDay()]||0)+1; }
+      }
+      var hv = parseFloat(C.ht>=0 ? row[C.ht] : NaN);
+      if (!isNaN(hv)&&hv>=0&&hv<1000) { htArr.push(hv); weekly[wk].hts.push(hv); }
+      if (!tkFirst[tid]||ts<tkFirst[tid]) tkFirst[tid]=ts;
+    }
+
+    var sv = C.solvedAt>=0&&row[C.solvedAt] ? new Date(row[C.solvedAt]) : null;
+    if (sv&&!isNaN(sv.getTime())&&!tkSolved[tid]) tkSolved[tid]=sv;
+
+    var fcrV=C.fcr>=0?row[C.fcr]:'';
+    if(fcrV!==''){fcrTot++;if(fcrV==='100.00%')fcrPos++;}
+    var cp=parseFloat(C.csatP>=0?row[C.csatP]:NaN); var cn=parseFloat(C.csatN>=0?row[C.csatN]:NaN);
+    if(!isNaN(cp))csatP+=cp; if(!isNaN(cn))csatN+=cn;
+
+    if(seen[tid]) return; seen[tid]=true;
+    tkStatus[tid]=C.status>=0?row[C.status]:'';
+    var htT=parseFloat(C.ht>=0?row[C.ht]:NaN); tkHT[tid]=isNaN(htT)?null:htT;
+
+    var s1=(C.seg1>=0?row[C.seg1]||'':'').trim();
+    var s2=(C.seg2>=0?row[C.seg2]||'':'').trim();
+    var s3=(C.seg3>=0?row[C.seg3]||'':'').trim();
+    var seg=[s1,s2,s3].filter(function(s){return s&&s!=='nan';}).join(' › ')||'Unknown';
+    segCount[seg]=(segCount[seg]||0)+1;
+    if(!segHT[seg])segHT[seg]=[];
+    if(!isNaN(htT)&&htT<1000)segHT[seg].push(htT);
+
+    var tgs=(C.tags>=0?row[C.tags]||'':'').toLowerCase();
+    if(tgs.indexOf('ultimate_escalation')>=0)escalCnt++;
+    var ra=C.reassign>=0?row[C.reassign]:'';
+    if(ra==='True'||ra==='true')raCnt++;
+    var ro=parseFloat(C.reopens>=0?row[C.reopens]:NaN);
+    if(!isNaN(ro)&&ro>=1)roCnt++;
+
+    var ch=(C.channel>=0?row[C.channel]||'unknown':'unknown');
+    chanMap[ch]=(chanMap[ch]||0)+1;
+    var lg=(C.lang>=0?row[C.lang]||'':'').replace('language__','').toUpperCase()||'unknown';
+    langMap[lg]=(langMap[lg]||0)+1;
+  });
+
+  Object.keys(tkFirst).forEach(function(tid){
+    if(tkSolved[tid]&&tkFirst[tid]){var h=(tkSolved[tid]-tkFirst[tid])/3600000;if(h>=0)resArr.push(h);}
+  });
+
+  var totalTk=Object.keys(seen).length, activeDays=Object.keys(dates).length;
+  var closed=Object.keys(tkStatus).filter(function(t){return tkStatus[t]==='closed';}).length;
+  var frtDist={'<5':0,'5-15':0,'15-30':0,'30-60':0,'≥60':0};
+  frtArr.forEach(function(v){if(v<5)frtDist['<5']++;else if(v<15)frtDist['5-15']++;else if(v<30)frtDist['15-30']++;else if(v<60)frtDist['30-60']++;else frtDist['≥60']++;});
+
+  var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var frtHours=Object.keys(frtByHr).map(function(h){return{h:parseInt(h),v:frtByHr[h]};}).sort(function(a,b){return b.v-a.v;}).slice(0,6);
+  var frtDays=Object.keys(frtByDow).map(function(d){return{d:DOW[parseInt(d)],v:frtByDow[d]};}).sort(function(a,b){return b.v-a.v;});
+
+  var top5seg=Object.keys(segCount).map(function(k){return{name:k,count:segCount[k],pct:totalTk>0?segCount[k]/totalTk*100:0};}).sort(function(a,b){return b.count-a.count;}).slice(0,5);
+  var top5ht=Object.keys(segHT).filter(function(k){return segHT[k].length>=2;}).map(function(k){return{name:k,avgHT:mean(segHT[k]),n:segHT[k].length};}).sort(function(a,b){return b.avgHT-a.avgHT;}).slice(0,5);
+  var weekly2=Object.keys(weekly).sort().map(function(wk){var d=weekly[wk];return{week:'W'+wk,tickets:Object.keys(d.tids).length,avgFRT:mean(d.frs),avgHT:mean(d.hts)};});
+
+  return {
+    agentName:agentName, label:label, activeDays:activeDays,
+    interactions:rows.length, tickets:totalTk,
+    tph:activeDays>0?totalTk/(activeDays*8):0,
+    closed:closed, solvedRate:totalTk>0?closed/totalTk*100:0,
+    avgFRT:mean(frtArr), medFRT:median(frtArr), p85FRT:pct(frtArr,85), frtN:frtArr.length,
+    frtOver15:frtArr.filter(function(v){return v>15;}).length,
+    frtOver15pct:frtArr.length>0?frtArr.filter(function(v){return v>15;}).length/frtArr.length*100:0,
+    avgHT:mean(htArr), medHT:median(htArr),
+    avgRes:mean(resArr), medRes:median(resArr),
+    fcrRate:fcrTot>0?fcrPos/fcrTot*100:0, fcrN:fcrTot,
+    csatRate:(csatP+csatN)>0?csatP/(csatP+csatN)*100:0, csatPos:csatP, csatNeg:csatN,
+    escalRate:totalTk>0?escalCnt/totalTk*100:0, escalCount:escalCnt,
+    reassRate:totalTk>0?raCnt/totalTk*100:0, reassCount:raCnt,
+    reopenRate:totalTk>0?roCnt/totalTk*100:0,
+    frtDist:frtDist, top5seg:top5seg, top5ht:top5ht,
+    frtHours:frtHours, frtDays:frtDays, weekly:weekly2,
+    channels:topN(chanMap,5), languages:topN(langMap,5)
+  };
+}
+
+// ─── MATH HELPERS ────────────────────────────────────────────
+function mean(a){if(!a||!a.length)return 0;return a.reduce(function(s,v){return s+v;},0)/a.length;}
+function median(a){if(!a||!a.length)return 0;var s=a.slice().sort(function(a,b){return a-b;});var m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+function pct(a,p){if(!a||!a.length)return 0;var s=a.slice().sort(function(a,b){return a-b;});return s[Math.ceil(s.length*p/100)-1]||0;}
+function f(v,d){if(v===null||v===undefined||isNaN(v))return 'N/A';return parseFloat(v).toFixed(d!==undefined?d:1);}
+function topN(o,n){return Object.keys(o).map(function(k){return{k:k,v:o[k]};}).sort(function(a,b){return b.v-a.v;}).slice(0,n);}
+function isoWeek(d){var dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=dt.getUTCDay()||7;dt.setUTCDate(dt.getUTCDate()+4-day);var y=new Date(Date.UTC(dt.getUTCFullYear(),0,1));return Math.ceil((((dt-y)/86400000)+1)/7);}
+
+// ─── SIDEBAR RENDER ──────────────────────────────────────────
+function renderAgentList() {
+  var q = document.getElementById('agentSearch').value.toLowerCase();
+  var agents = listAgents().filter(function(a){return a.toLowerCase().indexOf(q)>=0;});
+  var html = '';
+  agents.forEach(function(a) {
+    var initials = a.split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
+    html += '<div class="agent-item'+(a===selectedAgent?' active':'')+'" onclick="selectAgent(\''+escQ(a)+'\')" style="position:relative">' +
+      '<div class="agent-avatar">'+initials+'</div>' +
+      '<span class="agent-name" style="flex:1">'+a+'</span>' +
+      '<span onclick="event.stopPropagation();deleteAgent(\''+escQ(a)+'\')" title="Delete agent" ' +
+        'style="opacity:0.4;font-size:14px;cursor:pointer;padding:2px 4px;border-radius:4px;line-height:1" ' +
+        'onmouseover="this.style.opacity=1;this.style.background=\'rgba(220,38,38,0.15)\'" ' +
+        'onmouseout="this.style.opacity=0.4;this.style.background=\'transparent\'">🗑️</span>' +
+      '</div>';
+  });
+  if (!html) html = '<div style="color:#5d718f;font-size:12px;padding:8px">No agents found</div>';
+  document.getElementById('agentList').innerHTML = html;
+}
+
+function deleteAgent(agentName) {
+  if (!confirm('Delete all data for "' + agentName + '"?\nThis cannot be undone.')) return;
+  if (db.agents[agentName]) {
+    delete db.agents[agentName];
+    saveDB();
+  }
+  if (selectedAgent === agentName) {
+    selectedAgent = null;
+    selectedMonths = [];
+    document.getElementById('monthsList').innerHTML = '';
+    document.getElementById('emptyState').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('topbarLabel').textContent = 'No agent selected';
+  }
+  renderAgentList();
+  setStatus('Deleted: ' + agentName);
+}
+
+function deleteMonth(agentName, month) {
+  if (!confirm('Delete "' + month + '" data for "' + agentName + '"?')) return;
+  if (db.agents[agentName] && db.agents[agentName][month]) {
+    delete db.agents[agentName][month];
+    if (Object.keys(db.agents[agentName]).length === 0) delete db.agents[agentName];
+    saveDB();
+  }
+  selectedMonths = selectedMonths.filter(function(m){ return m !== month; });
+  renderAgentList();
+  renderMonthList();
+  renderDashboard();
+  setStatus('Deleted: ' + agentName + ' · ' + month);
+}
+
+function renderMonthList() {
+  var months = listMonths(selectedAgent);
+  var colors = ['sel-0','sel-1','sel-2'];
+  var html = '';
+  months.forEach(function(m) {
+    var idx = selectedMonths.indexOf(m);
+    html += '<div style="display:flex;align-items:center;gap:5px">' +
+      '<div class="month-chip '+(idx>=0?colors[idx]:'')+'" onclick="toggleMonth(\''+escQ(m)+'\')" style="flex:1;margin-bottom:0">' + m + '</div>' +
+      '<span onclick="deleteMonth(\''+escQ(selectedAgent)+'\',\''+escQ(m)+'\')" title="Delete this month" ' +
+        'style="cursor:pointer;font-size:13px;opacity:0.4;padding:2px 4px;border-radius:4px" ' +
+        'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4">🗑️</span>' +
+      '</div>';
+  });
+  if (!html) html = '<div style="color:#5d718f;font-size:11px;padding:4px">No months loaded</div>';
+  document.getElementById('monthsList').innerHTML = html;
+}
+
+function selectAgent(name) {
+  selectedAgent = name; selectedMonths = [];
+  var months = listMonths(name);
+  if (months.length > 0) selectedMonths = [months[0]];
+  renderAgentList(); renderMonthList(); renderDashboard();
+}
+
+function toggleMonth(month) {
+  var idx = selectedMonths.indexOf(month);
+  if (idx >= 0) { selectedMonths.splice(idx, 1); }
+  else if (selectedMonths.length < 3) { selectedMonths.push(month); }
+  renderMonthList(); renderDashboard();
+}
+
+function escQ(s) { return s.replace(/'/g,"\\'"); }
+
+// ─── DASHBOARD RENDER ────────────────────────────────────────
+var chartInstances = {};
+
+function renderDashboard() {
+  if (!selectedAgent || !selectedMonths.length) {
+    document.getElementById('emptyState').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    return;
+  }
+
+  var allM = selectedMonths.map(function(m){return getMetrics(selectedAgent, m);}).filter(Boolean);
+  if (!allM.length) return;
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+
+  var label = selectedMonths.join(' · ') + ' | ' + selectedAgent;
+  document.getElementById('topbarLabel').textContent = label;
+
+  // Destroy old charts
+  Object.keys(chartInstances).forEach(function(k){ try{chartInstances[k].destroy();}catch(e){} });
+  chartInstances = {};
+
+  var m = allM[0]; // primary month
+  var html = '';
+
+  // ── KPIs ──
+  html += '<div class="section-title">📊 Core Performance Metrics</div>';
+  html += '<div class="kpi-grid">';
+  var kpis = [
+    {label:'Total Interactions',  value:m.interactions,                 unit:'interactions', color:'purple'},
+    {label:'Ticket Volume',       value:m.tickets,                      unit:'unique tickets',color:'blue'},
+    {label:'Ticket / Hour',       value:f(m.tph,2),                     unit:'per hour',  color:'teal'},
+    {label:'Solved Rate',         value:f(m.solvedRate,1)+'%',           unit:m.closed+' closed', color:'green'},
+    {label:'Avg First Reply',     value:f(m.avgFRT,1),                   unit:'minutes',   color: m.avgFRT>15?'red':'green'},
+    {label:'Median FRT',          value:f(m.medFRT,1),                   unit:'minutes',   color:'blue'},
+    {label:'Full Resolution',     value:f(m.avgRes,1),                   unit:'hours avg', color:'amber'},
+    {label:'FCR Rate',            value:f(m.fcrRate,1)+'%',              unit:m.fcrN+' measured', color: m.fcrRate>=70?'green':'red'},
+    {label:'CSAT Score',          value:f(m.csatRate,1)+'%',             unit:'👍'+m.csatPos+' 👎'+m.csatNeg, color: m.csatRate>=90?'green':'amber'},
+    {label:'Escalation Rate',     value:f(m.escalRate,1)+'%',            unit:m.escalCount+' tickets', color:'red'},
+    {label:'Reassignment Rate',   value:f(m.reassRate,1)+'%',            unit:m.reassCount+' reassigned', color:'amber'},
+    {label:'Reopen Rate',         value:f(m.reopenRate,1)+'%',           unit:'1+ reopens', color: m.reopenRate>30?'red':'amber'},
+    {label:'FRT > 15 min',        value:f(m.frtOver15pct,1)+'%',         unit:m.frtOver15+' cases', color: m.frtOver15pct>25?'red':'amber'},
+  ];
+  kpis.forEach(function(k){
+    html += '<div class="kpi-card '+k.color+'">' +
+      '<div class="kpi-label">'+k.label+'</div>' +
+      '<div class="kpi-value">'+k.value+'</div>' +
+      '<div class="kpi-unit">'+k.unit+'</div></div>';
+  });
+  html += '</div>';
+
+  // ── YEARLY SUMMARY ──
+  var allMonths = listMonths(selectedAgent);
+  if (allMonths.length > 0) {
+    var allYearData = allMonths.map(function(mo){return getMetrics(selectedAgent, mo);}).filter(Boolean);
+    html += '<div class="section-title" style="margin-top:8px">📆 Yearly Summary — All ' + allYearData.length + ' Months</div>';
+    html += '<div style="background:#fff;border-radius:10px;padding:16px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow-x:auto">';
+    html += '<table class="yearly-table"><thead><tr>' +
+      '<th>Month</th><th>Tickets</th><th>Ticket/Hr</th><th>Solved%</th>' +
+      '<th>Avg FRT</th><th>Median FRT</th><th>FCR%</th><th>CSAT%</th>' +
+      '<th>Escalation%</th><th>Reopen%</th><th>Avg HT</th></tr></thead><tbody>';
+    allYearData.forEach(function(d){
+      html += '<tr>' +
+        '<td>'+d.label+'</td>' +
+        '<td>'+d.tickets+'</td>' +
+        '<td>'+f(d.tph,2)+'</td>' +
+        '<td>'+f(d.solvedRate,1)+'%</td>' +
+        '<td class="'+(d.avgFRT>15?'warn':'good')+'">'+f(d.avgFRT,1)+' min</td>' +
+        '<td>'+f(d.medFRT,1)+' min</td>' +
+        '<td class="'+(d.fcrRate>=70?'good':'warn')+'">'+f(d.fcrRate,1)+'%</td>' +
+        '<td class="'+(d.csatRate>=90?'good':d.csatRate<80?'warn':'')+'">'+f(d.csatRate,1)+'%</td>' +
+        '<td class="'+(d.escalRate>5?'warn':'')+'">'+f(d.escalRate,1)+'%</td>' +
+        '<td class="'+(d.reopenRate>30?'warn':'')+'">'+f(d.reopenRate,1)+'%</td>' +
+        '<td>'+f(d.avgHT,1)+' min</td></tr>';
+    });
+    if (allYearData.length > 1) {
+      function ya(k){return allYearData.reduce(function(s,d){return s+d[k];},0)/allYearData.length;}
+      html += '<tr class="avg-row"><td>📊 Average</td>' +
+        '<td>'+Math.round(ya('tickets'))+'</td>' +
+        '<td>'+f(ya('tph'),2)+'</td>' +
+        '<td>'+f(ya('solvedRate'),1)+'%</td>' +
+        '<td>'+f(ya('avgFRT'),1)+' min</td>' +
+        '<td>'+f(ya('medFRT'),1)+' min</td>' +
+        '<td>'+f(ya('fcrRate'),1)+'%</td>' +
+        '<td>'+f(ya('csatRate'),1)+'%</td>' +
+        '<td>'+f(ya('escalRate'),1)+'%</td>' +
+        '<td>'+f(ya('reopenRate'),1)+'%</td>' +
+        '<td>'+f(ya('avgHT'),1)+' min</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  // ── CHARTS ──
+  html += '<div class="section-title">📈 Analysis Charts</div>';
+  html += '<div class="charts-grid">';
+  html += '<div class="chart-card"><h4>FRT Distribution</h4><canvas id="chartFRT"></canvas></div>';
+  html += '<div class="chart-card"><h4>Weekly Avg FRT Trend (min)</h4><canvas id="chartWeekly"></canvas></div>';
+  html += '</div>';
+
+  // ── FRT DISTRIBUTION TABLE (count + %) ──
+  html += '<div class="table-grid" style="margin-bottom:20px">';
+  html += '<div class="table-card"><h4>📊 FRT Distribution — Count & Percentage</h4>';
+  html += '<table><thead><tr><th>Bucket</th><th>Count</th><th>%</th><th>Bar</th></tr></thead><tbody>';
+  var bKeys=['<5','5-15','15-30','30-60','≥60'];
+  var bLabels=['< 5 min','5 – 15 min','15 – 30 min','30 – 60 min','≥ 60 min'];
+  var bColors=['#059669','#2d6be4','#d97706','#ef4444','#7c3aed'];
+  bKeys.forEach(function(k,i){
+    var cnt = (m.frtDist&&m.frtDist[k])||0;
+    var pct2 = m.frtN>0 ? (cnt/m.frtN*100) : 0;
+    var barW = Math.round(pct2);
+    html += '<tr><td>'+bLabels[i]+'</td>' +
+      '<td><b>'+cnt+'</b></td>' +
+      '<td style="font-weight:700;color:'+bColors[i]+'">'+f(pct2,1)+'%</td>' +
+      '<td><div style="background:'+bColors[i]+';height:10px;border-radius:5px;width:'+Math.max(barW,1)+'%;min-width:4px"></div></td></tr>';
+  });
+  html += '<tr style="border-top:2px solid #e2e8f0"><td><b>Total</b></td><td><b>'+m.frtN+'</b></td><td><b>100%</b></td><td></td></tr>';
+  html += '</tbody></table></div>';
+
+  // ── WEEKLY BREAKDOWN TABLE ──
+  html += '<div class="table-card"><h4>📅 Weekly Performance Breakdown</h4>';
+  html += '<table><thead><tr><th>Week</th><th>Tickets</th><th>Avg FRT</th><th>Avg HT</th></tr></thead><tbody>';
+  (m.weekly||[]).forEach(function(w,i){
+    var rowBg = i%2===0?'':'background:#f7f9fc';
+    html += '<tr style="'+rowBg+'"><td><b>'+w.week+'</b></td>' +
+      '<td>'+w.tickets+'</td>' +
+      '<td style="font-weight:700;color:'+(w.avgFRT>15?'#dc2626':'#059669')+'">'+f(w.avgFRT,1)+' min</td>' +
+      '<td>'+f(w.avgHT,1)+' min</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '</div>';
+
+  // ── SEGMENT TABLES ──
+  html += '<div class="table-grid">';
+  html += '<div class="table-card"><h4>🗂️ Top 5 Ticket Types (Volume)</h4><table><thead><tr><th>#</th><th>Segment</th><th>Tickets</th><th>%</th></tr></thead><tbody>';
+  (m.top5seg||[]).forEach(function(s,i){
+    html += '<tr><td class="rank-num">'+(i+1)+'</td><td>'+s.name+'</td><td><b>'+s.count+'</b></td><td>'+f(s.pct,1)+'%</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div class="table-card"><h4>⏱️ Top 5 by Handle Time</h4><table><thead><tr><th>#</th><th>Segment</th><th>Avg HT</th></tr></thead><tbody>';
+  (m.top5ht||[]).forEach(function(s,i){
+    html += '<tr><td class="rank-num">'+(i+1)+'</td><td>'+s.name+' <span style="color:#a0aec0;font-size:11px">(n='+s.n+')</span></td><td><b>'+f(s.avgHT,1)+' min</b></td></tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  // ── TIME PATTERNS ──
+  html += '<div class="table-grid">';
+  html += '<div class="table-card"><h4>🕐 FRT &gt; 15 min by Hour (UTC)</h4><table><thead><tr><th>Hour</th><th>Cases</th><th>Bar</th></tr></thead><tbody>';
+  (m.frtHours||[]).forEach(function(h){
+    html += '<tr><td>UTC '+h.h+':00</td><td><b>'+h.v+'</b></td><td><span style="color:#d97706">'+'█'.repeat(Math.max(1,Math.round(h.v/3)))+'</span></td></tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div class="table-card"><h4>📅 FRT &gt; 15 min by Day</h4><table><thead><tr><th>Day</th><th>Cases</th><th>Bar</th></tr></thead><tbody>';
+  (m.frtDays||[]).forEach(function(d){
+    html += '<tr><td>'+d.d+'</td><td><b>'+d.v+'</b></td><td><span style="color:#dc2626">'+'█'.repeat(Math.max(1,Math.round(d.v/4)))+'</span></td></tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  // ── CHANNEL & LANGUAGE ──
+  html += '<div class="table-grid">';
+  html += '<div class="table-card"><h4>📡 Channel Distribution</h4><table><thead><tr><th>Channel</th><th>Tickets</th></tr></thead><tbody>';
+  (m.channels||[]).forEach(function(c){html+='<tr><td>'+c.k+'</td><td><b>'+c.v+'</b></td></tr>';});
+  html += '</tbody></table></div>';
+  html += '<div class="table-card"><h4>🌐 Language Distribution</h4><table><thead><tr><th>Language</th><th>Tickets</th></tr></thead><tbody>';
+  (m.languages||[]).forEach(function(l){html+='<tr><td>'+l.k+'</td><td><b>'+l.v+'</b></td></tr>';});
+  html += '</tbody></table></div></div>';
+
+  // ── COMPARISON (if 2+ months) ──
+  if (allM.length >= 2) {
+    html += '<div class="section-title" style="margin-top:8px">📅 Month-over-Month Comparison</div>';
+    html += '<div style="background:#fff;border-radius:10px;padding:16px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow-x:auto">';
+    html += '<table class="comp-table"><thead><tr><th>Metric</th>';
+    allM.forEach(function(m2){ html += '<th>'+m2.label+'</th>'; });
+    for (var di=1; di<allM.length; di++) html += '<th>△ '+allM[di].label+' vs '+allM[di-1].label+'</th>';
+    html += '</tr></thead><tbody>';
+    var cmpMetrics = [
+      {label:'Ticket Volume',      key:'tickets',      dir:'high',dp:0,unit:''},
+      {label:'Ticket / Hour',      key:'tph',          dir:'high',dp:2,unit:'/hr'},
+      {label:'Solved Rate',        key:'solvedRate',   dir:'high',dp:1,unit:'%'},
+      {label:'Avg FRT (min)',      key:'avgFRT',       dir:'low', dp:1,unit:'min'},
+      {label:'Median FRT (min)',   key:'medFRT',       dir:'low', dp:1,unit:'min'},
+      {label:'Full Res Time (hr)', key:'avgRes',       dir:'low', dp:1,unit:'hr'},
+      {label:'FCR Rate',           key:'fcrRate',      dir:'high',dp:1,unit:'%'},
+      {label:'CSAT Score',         key:'csatRate',     dir:'high',dp:1,unit:'%'},
+      {label:'Escalation Rate',    key:'escalRate',    dir:'low', dp:1,unit:'%'},
+      {label:'Reopen Rate',        key:'reopenRate',   dir:'low', dp:1,unit:'%'},
+      {label:'Avg Handle Time',    key:'avgHT',        dir:'low', dp:1,unit:'min'},
+    ];
+    cmpMetrics.forEach(function(def, idx) {
+      html += '<tr><td>'+def.label+'</td>';
+      var vals = allM.map(function(m2){return m2[def.key];});
+      vals.forEach(function(v){ html += '<td style="text-align:center;font-weight:600">'+(def.dp===0?Math.round(v):f(v,def.dp))+' '+def.unit+'</td>'; });
+      for (var di=1; di<allM.length; di++) {
+        var delta = vals[di]-vals[di-1];
+        var pctChg = vals[di-1]!==0 ? delta/Math.abs(vals[di-1])*100 : 0;
+        var improved = def.dir==='high' ? delta>0 : delta<0;
+        var arrow = delta===0?'→':(delta>0?'▲':'▼');
+        var cls = delta===0?'delta-same':(improved?'delta-up':'delta-down');
+        html += '<td style="text-align:center"><span class="'+cls+'">'+arrow+' '+f(Math.abs(delta),1)+' ('+f(Math.abs(pctChg),1)+'%)</span></td>';
+      }
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // ── ISSUES & IMPROVEMENT SUGGESTIONS ──
+  html += '<div class="section-title" style="margin-top:8px">🔍 Issues & Improvement Suggestions</div>';
+  html += '<div style="background:#fff;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)">';
+  var issues = buildIssues(m);
+  issues.forEach(function(iss){
+    var bg  = iss.type==='critical'?'#fee2e2':iss.type==='warn'?'#fef3c7':'#dcfce7';
+    var bc  = iss.type==='critical'?'#dc2626':iss.type==='warn'?'#d97706':'#059669';
+    var ico = iss.type==='critical'?'🔴':iss.type==='warn'?'🟡':'🟢';
+    html += '<div style="border-left:4px solid '+bc+';background:'+bg+';border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:10px">' +
+      '<div style="font-weight:700;font-size:13px;color:'+bc+';margin-bottom:4px">'+ico+' '+iss.title+'</div>' +
+      '<div style="font-size:12px;color:#4a5568;line-height:1.6">'+iss.detail+'</div>' +
+      '<div style="font-size:12px;color:'+bc+';margin-top:6px;font-weight:600">💡 '+iss.action+'</div>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  document.getElementById('dashboard').innerHTML = html;
+
+  // Render charts
+  renderChartFRT(m, allM);
+  renderChartWeekly(m, allM);
+}
+
+function buildIssues(m) {
+  var issues = [];
+
+  // 1. Average FRT
+  if (m.avgFRT > 30) {
+    issues.push({ type:'critical', title:'High Average First Reply Time (' + f(m.avgFRT,1) + ' min)',
+      detail: 'Average FRT of ' + f(m.avgFRT,1) + ' min significantly exceeds the 15-min target. Median is ' + f(m.medFRT,1) + ' min, suggesting extreme outliers are pulling the average up.',
+      action: 'Investigate tickets with FRT > 60 min. Prioritize inbox during peak hours (UTC 14–16). Consider auto-assignment rules.' });
+  } else if (m.avgFRT > 15) {
+    issues.push({ type:'warn', title:'Average First Reply Time Above Target (' + f(m.avgFRT,1) + ' min)',
+      detail: 'Average FRT of ' + f(m.avgFRT,1) + ' min is above the 15-min benchmark. ' + m.frtOver15 + ' tickets (' + f(m.frtOver15pct,1) + '%) exceeded the threshold.',
+      action: 'Review ticket queue management. Set up alerts for tickets waiting > 10 min without a reply.' });
+  } else {
+    issues.push({ type:'ok', title:'First Reply Time on Target (' + f(m.avgFRT,1) + ' min)',
+      detail: 'Average FRT is within the acceptable range. ' + f(100-m.frtOver15pct,1) + '% of tickets received a first reply within 15 minutes.',
+      action: 'Maintain current response workflow. Monitor peak-hour performance.' });
+  }
+
+  // 2. Reopen Rate
+  if (m.reopenRate > 35) {
+    issues.push({ type:'critical', title:'High Ticket Reopen Rate (' + f(m.reopenRate,1) + '%)',
+      detail: 'Over a third of tickets were reopened, indicating first-contact resolution is insufficient. This increases handle time and customer frustration.',
+      action: 'Review resolution quality. Implement a resolution checklist before closing tickets. Coach on complete troubleshooting steps.' });
+  } else if (m.reopenRate > 20) {
+    issues.push({ type:'warn', title:'Elevated Reopen Rate (' + f(m.reopenRate,1) + '%)',
+      detail: m.reopenRate.toFixed(1) + '% of tickets were reopened after closure. Target is below 20%.',
+      action: 'Identify the top ticket types being reopened. Strengthen knowledge base for those categories.' });
+  } else {
+    issues.push({ type:'ok', title:'Reopen Rate Acceptable (' + f(m.reopenRate,1) + '%)',
+      detail: 'Reopen rate is within acceptable limits. Most tickets are being resolved on first attempt.',
+      action: 'Continue monitoring. Aim to reduce below 15% for best-in-class performance.' });
+  }
+
+  // 3. FCR
+  if (m.fcrRate < 60) {
+    issues.push({ type:'critical', title:'Low First Contact Resolution Rate (' + f(m.fcrRate,1) + '%)',
+      detail: 'FCR of ' + f(m.fcrRate,1) + '% means nearly ' + f(100-m.fcrRate,1) + '% of issues require multiple contacts. Industry benchmark is 70–75%.',
+      action: 'Identify recurring multi-contact ticket types. Provide targeted training. Improve troubleshooting guides for top-volume segments.' });
+  } else if (m.fcrRate < 70) {
+    issues.push({ type:'warn', title:'FCR Below Benchmark (' + f(m.fcrRate,1) + '%)',
+      detail: 'FCR of ' + f(m.fcrRate,1) + '% is below the 70% target. Measured on ' + m.fcrN + ' interactions.',
+      action: 'Focus on segments with lowest FCR (Integration, Airalo for Business). Provide additional resource materials.' });
+  } else {
+    issues.push({ type:'ok', title:'FCR Meeting Target (' + f(m.fcrRate,1) + '%)',
+      detail: 'First Contact Resolution rate is at or above the 70% benchmark. Measured on ' + m.fcrN + ' interactions.',
+      action: 'Sustain by keeping knowledge base updated. Aim for 75%+ in upcoming months.' });
+  }
+
+  // 4. CSAT
+  if (m.csatTotal < 10) {
+    issues.push({ type:'warn', title:'Low CSAT Response Volume (' + m.csatTotal + ' responses)',
+      detail: 'Only ' + m.csatTotal + ' CSAT responses collected out of ' + m.tickets + ' tickets (' + f(m.csatTotal/m.tickets*100,1) + '%). Data may not be statistically reliable.',
+      action: 'Enable post-resolution CSAT surveys. Follow up with customers to increase survey response rate above 15%.' });
+  } else if (m.csatRate < 85) {
+    issues.push({ type:'critical', title:'CSAT Below Acceptable Level (' + f(m.csatRate,1) + '%)',
+      detail: m.csatNeg + ' negative responses vs ' + m.csatPos + ' positive. Customer satisfaction is below the 85% threshold.',
+      action: 'Review all negative CSAT tickets for root cause. Identify common complaint patterns and address with process/training improvements.' });
+  } else if (m.csatRate < 90) {
+    issues.push({ type:'warn', title:'CSAT Needs Improvement (' + f(m.csatRate,1) + '%)',
+      detail: 'CSAT at ' + f(m.csatRate,1) + '% — target is 90%+. ' + m.csatNeg + ' negative responses recorded.',
+      action: 'Analyze negative responses for patterns. Improve empathy and resolution completeness in communications.' });
+  } else {
+    issues.push({ type:'ok', title:'CSAT Excellent (' + f(m.csatRate,1) + '%)',
+      detail: 'Customer satisfaction exceeds the 90% target. ' + m.csatPos + ' positive vs ' + m.csatNeg + ' negative responses.',
+      action: 'Maintain quality standards. Share best practices from this agent with the wider team.' });
+  }
+
+  // 5. Reassignment
+  if (m.reassRate > 40) {
+    issues.push({ type:'warn', title:'High Ticket Reassignment Rate (' + f(m.reassRate,1) + '%)',
+      detail: f(m.reassRate,1) + '% of tickets (' + m.reassCount + ') were reassigned to this agent from others. This may indicate complex escalations or inefficient routing.',
+      action: 'Analyze reassignment reasons. Review ticket routing logic to reduce unnecessary transfers. Clarify team specialization boundaries.' });
+  }
+
+  // 6. FRT peak hours
+  if (m.frtHours && m.frtHours.length > 0) {
+    var topHr = m.frtHours[0];
+    if (topHr.v > 10) {
+      issues.push({ type:'warn', title:'Peak-Hour FRT Delays (UTC ' + topHr.h + ':00 — ' + topHr.v + ' cases)',
+        detail: 'Most FRT > 15 min cases occur at UTC ' + topHr.h + ':00–' + (topHr.h+2) + ':00. This suggests insufficient coverage or high ticket volume during this window.',
+        action: 'Review staffing schedule for UTC ' + topHr.h + ':00 window. Consider load balancing or setting up auto-responses for peak periods.' });
+    }
+  }
+
+  // 7. 60+ min FRT outliers
+  var over60 = (m.frtDist && m.frtDist['≥60']) || 0;
+  if (over60 > 5) {
+    issues.push({ type:'critical', title:over60 + ' Tickets With FRT Over 60 Minutes',
+      detail: over60 + ' tickets (' + f(over60/m.frtN*100,1) + '% of measured) had first reply times exceeding 1 hour. These are significant SLA breaches.',
+      action: 'Audit all 60+ min FRT tickets. Set up real-time alerts for tickets waiting >30 min. Consider SLA breach escalation rules.' });
+  }
+
+  return issues;
+}
+
+function renderChartFRT(m, allM) {
+  var ctx = document.getElementById('chartFRT');
+  if (!ctx) return;
+  var labels = ['<5 min','5-15 min','15-30 min','30-60 min','≥60 min'];
+  var keys   = ['<5','5-15','15-30','30-60','≥60'];
+  var colors = ['#059669','#2d6be4','#d97706','#dc2626','#7c3aed'];
+  var datasets = allM.map(function(m2, i) {
+    return {
+      label: m2.label,
+      data: keys.map(function(k){ return (m2.frtDist&&m2.frtDist[k])||0; }),
+      backgroundColor: allM.length===1 ? colors : colors[i*2]||colors[i],
+    };
+  });
+  if (allM.length===1) datasets[0].backgroundColor = colors;
+  chartInstances['frt'] = new Chart(ctx, {
+    type: allM.length===1 ? 'bar' : 'bar',
+    data: { labels:labels, datasets:datasets },
+    options: { responsive:true, plugins:{legend:{display:allM.length>1}}, scales:{y:{beginAtZero:true}} }
+  });
+}
+
+function renderChartWeekly(m, allM) {
+  var ctx = document.getElementById('chartWeekly');
+  if (!ctx) return;
+  var allWeeks = {};
+  allM.forEach(function(m2){ (m2.weekly||[]).forEach(function(w){ allWeeks[w.week]=true; }); });
+  var wkList = Object.keys(allWeeks).sort();
+  var mColors = ['#2d6be4','#059669','#d97706'];
+  var datasets = allM.map(function(m2, i) {
+    return {
+      label: m2.label + ' FRT',
+      data: wkList.map(function(wk){ var found=(m2.weekly||[]).filter(function(w){return w.week===wk;})[0]; return found?parseFloat(f(found.avgFRT,1)):null; }),
+      borderColor: mColors[i], backgroundColor: mColors[i]+'22',
+      fill: true, tension: 0.3, pointRadius: 4,
+    };
+  });
+  chartInstances['weekly'] = new Chart(ctx, {
+    type:'line',
+    data:{ labels:wkList, datasets:datasets },
+    options:{ responsive:true, plugins:{legend:{display:allM.length>1}}, scales:{y:{beginAtZero:true, title:{display:true,text:'Minutes'}}} }
+  });
+}
+
+// ─── INIT ────────────────────────────────────────────────────
+loadDB();
+renderAgentList();
+</script>
+</body>
+</html>
